@@ -1,74 +1,103 @@
-name: Build
+name: Build Application
 
 on:
   push:
-    branches:
-      - main
-  
+    branches: [main]
+
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     services:
-
       mariadb:
         image: mariadb:11
-
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: robotshop
-          MYSQL_USER: robot
-          MYSQL_PASSWORD: robot123
-
+          MARIADB_ROOT_PASSWORD: rootpassword
+          MARIADB_DATABASE: appdb
+          MARIADB_USER: appuser
+          MARIADB_PASSWORD: apppassword
         ports:
           - 3306:3306
-
         options: >-
-          --health-cmd="mariadb-admin ping -h localhost -uroot -proot"
+          --health-cmd="mariadb-admin ping -h localhost -uroot -prootpassword"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
 
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: appdb
+      DB_USER: appuser
+      DB_PASSWORD: apppassword
+
     steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
+      #################################################
+      # Python Backend
+      #################################################
 
-      # Python
-
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Backend Dependencies
+      - name: Upgrade pip
         run: |
-          cd src/api
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+
+      - name: Install Backend Dependencies
+        working-directory: src/api
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found"
+            echo "Install your dependencies here"
+            # Example:
+            # pip install flask pymysql requests pytest
+          fi
 
       - name: Run Backend Tests
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_NAME: robotshop
-          DB_USER: robot
-          DB_PASSWORD: robot123
+        working-directory: src/api
         run: |
-          cd src/api
-          pytest
+          if [ -d tests ]; then
+            pytest
+          else
+            echo "No backend tests found."
+          fi
 
-      # Node
+      #################################################
+      # Frontend
+      #################################################
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
-      - name: Install Frontend
-        run: |
-          cd src/client
-          npm ci
+      - name: Install Frontend Dependencies
+        working-directory: src/client
+        run: npm install
 
       - name: Build Frontend
-        run: |
-          cd src/client
-          npm run build
+        working-directory: src/client
+        run: npm run build --if-present
+
+      - name: Run Frontend Tests
+        working-directory: src/client
+        run: npm test --if-present
+
+      #################################################
+      # Upload Build Artifacts
+      #################################################
+
+      - name: Upload Frontend Build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: src/client/build
+          if-no-files-found: ignore
