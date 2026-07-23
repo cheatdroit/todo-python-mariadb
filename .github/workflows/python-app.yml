@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    services:
+
+      mariadb:
+        image: mariadb:11
+
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: robotshop
+          MYSQL_USER: robot
+          MYSQL_PASSWORD: robot123
+
+        ports:
+          - 3306:3306
+
+        options: >-
+          --health-cmd="mariadb-admin ping -h localhost -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      # Python
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Backend Dependencies
+        run: |
+          cd src/api
+          pip install -r requirements.txt
+
+      - name: Run Backend Tests
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: robotshop
+          DB_USER: robot
+          DB_PASSWORD: robot123
+        run: |
+          cd src/api
+          pytest
+
+      # Node
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Frontend
+        run: |
+          cd src/client
+          npm ci
+
+      - name: Build Frontend
+        run: |
+          cd src/client
+          npm run build
